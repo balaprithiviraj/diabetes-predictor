@@ -58,7 +58,7 @@
                         Glucose Level (mg/dL)
                     </span>
                 </label>
-                <input type="number" id="glucose" min="0" max="300" step="1" value="120" 
+                <input type="number" id="glucose" name="glucose" min="0" max="300" step="1" value="120" 
                     class="input-transition w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
                 <p class="text-xs text-gray-500 mt-1">Normal range: 70-140 mg/dL</p>
             </div>
@@ -73,7 +73,7 @@
                         BMI (Body Mass Index)
                     </span>
                 </label>
-                <input type="number" id="bmi" min="10" max="60" step="0.1" value="25.5" 
+                <input type="number" id="bmi" name="bmi" min="10" max="60" step="0.1" value="25.5" 
                     class="input-transition w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none">
                 <p class="text-xs text-gray-500 mt-1">Healthy range: 18.5-24.9</p>
             </div>
@@ -88,7 +88,7 @@
                         Age (years)
                     </span>
                 </label>
-                <input type="number" id="age" min="0" max="120" step="1" value="45" 
+                <input type="number" id="age" name="age" min="0" max="120" step="1" value="45" 
                     class="input-transition w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none">
                 <p class="text-xs text-gray-500 mt-1">Age 45+ increases risk</p>
             </div>
@@ -149,7 +149,8 @@
     </div>
 
     <script>
-        const API_URL = 'diabetes-predictor-production-5df6.up.railway.app';
+        // API endpoint - using the exact live link
+        const API_URL = 'https://diabetes-predictor-production-5df6.up.railway.app';
 
         async function predictDiabetes() {
             // Get input values
@@ -183,8 +184,11 @@
                     age: parseInt(age)
                 };
 
-                // Make API call
-                const response = await fetch(`${API_URL}/predict`, {
+                console.log('Sending request to:', API_URL + '/predict');
+                console.log('Request data:', requestData);
+
+                // Make API call to the correct endpoint
+                const response = await fetch(API_URL + '/predict', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -194,17 +198,29 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorText = await response.text();
+                    console.error('Server response:', errorText);
+                    throw new Error(`Server error: ${response.status} - ${errorText}`);
                 }
 
                 const data = await response.json();
+                console.log('Response data:', data);
                 
-                // Display result with appropriate styling
-                displayResult(data.result);
+                // Display result - looking for 'result' field in response
+                if (data.result !== undefined) {
+                    displayResult(data.result);
+                } else if (data.prediction !== undefined) {
+                    displayResult(data.prediction);
+                } else if (data.risk !== undefined) {
+                    displayResult(data.risk);
+                } else {
+                    // If the response structure is different, show the whole response
+                    displayResult(JSON.stringify(data));
+                }
                 
             } catch (error) {
                 console.error('Error:', error);
-                showError('Failed to connect to the server. Please try again.');
+                showError('Failed to connect to the server. Please check your connection and try again. Details: ' + error.message);
             } finally {
                 // Hide loading, re-enable button
                 document.getElementById('loadingSpinner').classList.add('hidden');
@@ -220,13 +236,14 @@
             const riskIcon = document.getElementById('riskIcon');
             const riskMessage = document.getElementById('riskMessage');
 
-            // Format result (assuming result is a number between 0 and 1 or a percentage)
+            // Format result based on type
             let formattedResult = result;
             let riskLevel = '';
             let riskColor = '';
             let icon = '';
             let message = '';
 
+            // Handle different result formats
             if (typeof result === 'number') {
                 // If result is between 0 and 1 (probability)
                 if (result <= 1) {
@@ -250,30 +267,46 @@
                     }
                 } else {
                     // If result is already a percentage or other number
-                    formattedResult = result + (result > 1 ? '%' : '');
+                    formattedResult = result + (result > 1 ? '' : '');
                 }
-            } else {
-                // If result is a string (like "Diabetic" or "Not Diabetic")
+            } else if (typeof result === 'string') {
+                // If result is a string
                 formattedResult = result;
-                if (result.toLowerCase().includes('diabet')) {
+                if (result.toLowerCase().includes('diabetic') || result.toLowerCase().includes('positive')) {
                     riskLevel = 'Positive';
                     riskColor = 'bg-red-100 text-red-800';
                     icon = '🔴';
                     message = 'Diabetes detected. Please consult a healthcare provider.';
-                } else {
+                } else if (result.toLowerCase().includes('not') || result.toLowerCase().includes('negative')) {
                     riskLevel = 'Negative';
                     riskColor = 'bg-green-100 text-green-800';
                     icon = '✅';
                     message = 'No diabetes detected. Maintain your healthy habits!';
+                } else {
+                    riskLevel = 'Result';
+                    riskColor = 'bg-blue-100 text-blue-800';
+                    icon = '📊';
+                    message = 'Risk assessment completed based on your inputs.';
                 }
             }
 
             // Update UI
             resultElement.textContent = formattedResult;
-            riskBadge.textContent = riskLevel || 'Result';
-            riskBadge.className = `px-3 py-1 rounded-full text-sm font-medium ${riskColor}`;
-            riskIcon.textContent = icon || '⚕️';
-            riskMessage.textContent = message || 'Risk assessment completed based on your inputs.';
+            
+            if (riskLevel) {
+                riskBadge.textContent = riskLevel;
+                riskBadge.className = `px-3 py-1 rounded-full text-sm font-medium ${riskColor}`;
+            }
+            
+            if (icon) {
+                riskIcon.textContent = icon;
+            }
+            
+            if (message) {
+                riskMessage.textContent = message;
+            } else {
+                riskMessage.textContent = 'Risk assessment completed based on your inputs.';
+            }
             
             resultContainer.classList.remove('hidden');
         }
